@@ -1,0 +1,4 @@
+Bitmap_Add BITMAP DISCARDABLE "img/add.bmp"
+Bitmap_Main BITMAP DISCARDABLE "img/favs.bmp"
+Bitmap_Manage BITMAP DISCARDABLE "img/manage.bmp"
+Bitmap_Options BITMAP DISCARDABLE "img/options.bmp"
