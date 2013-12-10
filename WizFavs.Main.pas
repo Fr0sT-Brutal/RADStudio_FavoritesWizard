@@ -28,6 +28,7 @@ type
       TToolbarNotifier = class(TNotifierObject, INTAToolbarStreamNotifier)
       private
         FOwner: TFavsWizard;
+        FCurrToolbar: TToolBar;
       public
         // useless stuff
         procedure AfterSave; overload;
@@ -98,7 +99,6 @@ type
 var
   MainMenu: TMainMenu;
 //  SubMenu: TMenuItem;
-  Toolbar: TToolBar;
   Config: TConfig;
 
 resourcestring
@@ -247,7 +247,7 @@ procedure TFavsWizard.TToolbarNotifier.AfterSave(AToolbar: TWinControl); begin e
 procedure TFavsWizard.TToolbarNotifier.BeforeSave(AToolbar: TWinControl);
 begin
   // our toolbar?
-  if (AToolbar = Toolbar) and (Config.ShowPlacement = spToolbar) then
+  if (AToolbar = FCurrToolbar) and (Config.ShowPlacement = spToolbar) then
     FOwner.Remove;
 end;
 
@@ -261,12 +261,12 @@ begin
       // our cached toolbar has gone, there's new one.
       // !!! when destroying, a toolbar destroys our button too. So we must
       // nil it here. Then save new toolbar reference and install the button to it
-      if AToolbar <> Toolbar then
+      if AToolbar <> FCurrToolbar then
       begin
   FOwner.Log('loaded');
         FOwner.FToolBtn := nil;
         FOwner.Remove;
-        Toolbar := TToolBar(AToolbar);
+        FCurrToolbar := TToolBar(AToolbar);
         FOwner.Fill;
       end;
 end;
@@ -471,6 +471,7 @@ end;
 procedure TFavsWizard.Fill;
 var mi, miParent: TMenuItem;
     s: string;
+    Toolbar: TToolBar;
 begin
   if FControlsInstalled then Exit; // Controls are installed currently
 log('fill start');
@@ -648,7 +649,7 @@ var tmpConfig: TConfig;
 begin
   tmpConfig := Config;
   if WizFavs.FormSettings.Execute(tmpConfig) <> mrOk then Exit;
-  Remove; // ! uses old Config values       
+  Remove; // ! uses old Config values
   Config := tmpConfig;
   Fill;
   SaveSettings;
