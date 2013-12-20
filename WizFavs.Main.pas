@@ -472,6 +472,7 @@ procedure TFavsWizard.Fill;
 var mi, miParent: TMenuItem;
     s: string;
     Toolbar: TToolBar;
+    ToolBtn: TToolButton;
 begin
   if FControlsInstalled then Exit; // Controls are installed currently
 log('fill start');
@@ -489,6 +490,11 @@ log('fill start');
   case Config.ShowPlacement of
     spMainMenu:
       begin
+        // check if the item exists already and remove it if yes
+        // this might happen accidently due to weird wizard load/unload cycle
+        mi := MainMenu.Items.Find(SMenuCaption);
+        if mi <> nil then
+          MainMenu.Items.Remove(mi);
         mi := MainMenu.Items.Find(Config.MainMenuOptions.InsertAfter);
         if mi = nil
           then MainMenu.Items.Insert(MainMenu.Items.Count - 1, miParent)
@@ -515,6 +521,10 @@ log('fill start');
           // Standard toolbar - shit happened, raise error
           else
             raise Exception.Create(Format(SMsgErrToolbarNotFound, [s]));
+        // check if button exists and remove if yes
+        for ToolBtn in Toolbar do
+          if ToolBtn.Caption = SWizardID then
+            ToolBtn.Parent := nil;
         // create toolbar button
         if FToolBtn = nil then
         begin
@@ -522,7 +532,7 @@ log('fill start');
           with FToolBtn do
           begin
             Style := tbsDropDown;
-            Caption := SWizardID;
+            Caption := SWizardID; // for search only; shouldn't be shown
             ShowHint := True;
             Hint := SWizardName;
             DropdownMenu := FPopupMenu;
