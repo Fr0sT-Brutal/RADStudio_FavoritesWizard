@@ -3,7 +3,7 @@
 			<ProjectGuid>{1751DED1-A9B0-48EA-B734-A130E97F8D1A}</ProjectGuid>
 			<MainSource>WizFavoritesP.dpk</MainSource>
 			<Base>True</Base>
-			<Config Condition="'$(Config)'==''">Debug</Config>
+			<Config Condition="'$(Config)'==''">Release</Config>
 			<TargetedPlatforms>1</TargetedPlatforms>
 			<AppType>Package</AppType>
 			<FrameworkType>None</FrameworkType>
@@ -132,6 +132,7 @@
 						<VersionInfoKeys Name="Comments"/>
 					</VersionInfoKeys>
 					<Excluded_Packages>
+						<Excluded_Packages Name="$(BDS)\UserDir\Bpl\WizMenuActionsP.bpl">Action shortcuts editor wizard</Excluded_Packages>
 						<Excluded_Packages Name="$(BDSBIN)\dclmid160.bpl">Embarcadero MyBase DataAccess Components</Excluded_Packages>
 						<Excluded_Packages Name="$(BDSBIN)\svnide160.bpl">Embarcadero Subversion Integration</Excluded_Packages>
 						<Excluded_Packages Name="$(BDSBIN)\applet160.bpl">Embarcadero Control Panel Applet Package</Excluded_Packages>
