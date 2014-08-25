@@ -104,8 +104,10 @@ var
 resourcestring
   SMenuCaption = 'Favorites';
   SToolbarName = 'Favs wizard separate';
-  SMenuAddProject = 'Add current project';
-  SMenuAddProjGroup = 'Add current project group';
+  SMenuAddProjectEmpty = 'No current project';
+  SMenuAddProjectPatt = 'Add project %s';
+  SMenuAddProjGroupEmpty = 'No current project group';
+  SMenuAddProjGroupPatt = 'Add project group %s';
   SMenuManageList = 'Manage Favorites list...';
   SMenuOptions = 'Options...';
   SMsgUnsupportedIDE = 'Necessary IDE service not found';
@@ -142,7 +144,7 @@ const
   ShowPlacementOptionCount: array[TShowPlacement] of Cardinal =
     (2, 1, 2);
   ConstMenuCaptions: array[TFavsWizard.TMainActions] of string =
-    (SMenuAddProject, SMenuAddProjGroup, SMenuManageList, SMenuOptions, '-');
+    (SMenuAddProjectEmpty, SMenuAddProjGroupEmpty, SMenuManageList, SMenuOptions, '-');
 
 {$REGION 'Utils'}
 
@@ -246,7 +248,7 @@ procedure TFavsWizard.TToolbarNotifier.AfterSave(AToolbar: TWinControl); begin e
 // toolbar is about to be saved - remove our button from it
 procedure TFavsWizard.TToolbarNotifier.BeforeSave(AToolbar: TWinControl);
 begin
-  // our toolbar?
+  // toolbar is ours?
   if (AToolbar = FCurrToolbar) and (Config.ShowPlacement = spToolbar) then
     FOwner.Remove;
 end;
@@ -254,6 +256,8 @@ end;
 // toolbar has been read from registry - add our button to it
 procedure TFavsWizard.TToolbarNotifier.ToolbarLoaded(AToolbar: TWinControl);
 begin
+  if not FOwner.Started then Exit; // Wizard hasn't started yet (no settings etc)
+
   // current show place is toolbar?
   if Config.ShowPlacement = spToolbar then
     // names of toolbars are equal?
@@ -263,7 +267,6 @@ begin
       // nil it here. Then save new toolbar reference and install the button to it
       if AToolbar <> FCurrToolbar then
       begin
-  FOwner.Log('loaded');
         FOwner.FToolBtn := nil;
         FOwner.Remove;
         FCurrToolbar := TToolBar(AToolbar);
@@ -280,10 +283,10 @@ end;
 constructor TFavsWizard.Create;
 var bmp: TBitmap;
     icon: TExpertIcon;
-    act: TMainActions;
 begin
-Log('create');
   inherited Create([optUseConfig, optUseDelayed]);
+
+  FFavList := TStringList.Create;
 
   // create and fill icon list
   bmp := TBitmap.Create;
@@ -296,6 +299,118 @@ Log('create');
   end;
   bmp.Free;
 
+  // we'll create other controls and read settings later, in Startup
+end;
+
+procedure TFavsWizard.ReadSettings;
+var i: Integer;
+    place: TShowPlacement;
+    s: string;
+    arr: TStrArray;
+    tmp: TStringList;
+begin
+  // read show placement
+  s := ConfigKey.ReadString(SKeyShowPlace);
+  Config.ShowPlacement := TShowPlacement(GetEnumValue(TypeInfo(TShowPlacement), s));
+  // read show placements' options
+  for place := Low(TShowPlacement) to High(TShowPlacement) do
+  begin
+    s := ConfigKey.ReadString(SKeyShowOptsPrefix + GetEnumName(TypeInfo(TShowPlacement), Integer(place)));
+    arr := Split(s, ';', False);
+    if Length(arr) < ShowPlacementOptionCount[place] then
+      SetLength(arr, ShowPlacementOptionCount[place]);
+    case place of
+      spToolbar:
+        begin
+          Config.ToolbarOptions.Toolbar := TIDEToolbar(StrToIntDef(arr[0], -1));
+          Config.ToolbarOptions.ButtonIdx := StrToIntDef(arr[1], -1);
+        end;
+      spMainMenu:
+        begin
+          Config.MainMenuOptions.InsertAfter := arr[0];
+        end;
+      spSubMenu:
+        begin
+          Config.SubMenuOptions.InsertInto := arr[0];
+          Config.SubMenuOptions.InsertAfter := arr[1];
+        end;
+    end;
+  end;
+  Config.CorrectValues;
+
+  // read favs list - values with names "Fav_##"
+  tmp := TStringList.Create;
+  ConfigKey.GetValueNames(tmp);
+  for i := 0 to tmp.Count - 1 do
+    if Pos(SKeyFavPrefix, tmp[i]) = 1 then
+      FFavList.Add(ConfigKey.ReadString(tmp[i]));
+  FreeAndNil(tmp);
+end;
+
+procedure TFavsWizard.SaveSettings;
+var tmp: TStringList;
+    i: Integer;
+    place: TShowPlacement;
+    s: string;
+begin
+  // write general options
+  ConfigKey.WriteString(SKeyShowPlace,
+                         GetEnumName(TypeInfo(TShowPlacement), Integer(Config.ShowPlacement)));
+
+  // write show placement options
+  for place := Low(TShowPlacement) to High(TShowPlacement) do
+  begin
+    case place of
+      spToolbar:
+        s := Join([IntToStr(Integer(Config.ToolbarOptions.Toolbar)),
+                   IntToStr(Config.ToolbarOptions.ButtonIdx)], ';', False);
+      spMainMenu:
+        s := Join([Config.MainMenuOptions.InsertAfter], ';', False);
+      spSubMenu:
+        s := Join([Config.SubMenuOptions.InsertInto,
+                   Config.SubMenuOptions.InsertAfter], ';', False);
+    end;
+    ConfigKey.WriteString(SKeyShowOptsPrefix + GetEnumName(TypeInfo(TShowPlacement), Integer(place)), s);
+  end;
+
+  // write fav list
+  if (FFavList <> nil) and (FFavList.Count > 0) then
+  begin
+    // remove old fav list - values with decimal number names
+    tmp := TStringList.Create;
+    ConfigKey.GetValueNames(tmp);
+    for i := 0 to tmp.Count - 1 do
+      if Pos(SKeyFavPrefix, tmp[i]) = 1 then
+        ConfigKey.DeleteValue(tmp[i]);
+    FreeAndNil(tmp);
+    // write new values
+    for i := 0 to FFavList.Count - 1 do
+      ConfigKey.WriteString( Format(SKeyFavPrefix + '%.2d', [i]), FFavList[i]);
+  end;
+end;
+
+procedure TFavsWizard.Cleanup;
+var act: TMainActions;
+begin
+  SaveSettings;
+
+  // remove inserted controls
+  Remove;
+
+  // dispose all objects
+  INSrv.UnregisterToolbarNotifier(FNotifierIdx); // this will delete the object also
+  for act := Low(TMainActions) to High(TMainActions) do
+    FreeAndNil(FConstSubMenuItems[act]);
+  FreeAndNil(FFavList);
+  FreeAndNil(FPopupMenu);
+  FreeAndNil(FToolBtn);
+  FreeAndNil(FMenuItem);
+  inherited;
+end;
+
+procedure TFavsWizard.Startup;
+var act: TMainActions;
+begin
   // ** create constant menu items **
 
   for act := Low(TMainActions) to High(TMainActions) do
@@ -328,128 +443,14 @@ Log('create');
   FToolbarNotifier.FOwner := Self;
   FNotifierIdx := INSrv.RegisterToolbarNotifier(FToolbarNotifier as INTAToolbarStreamNotifier);
 
-  // we'll read settings later, in Startup
-end;
-
-procedure TFavsWizard.ReadSettings;
-var i: Integer;
-    place: TShowPlacement;
-    s: string;
-    arr: TStrArray;
-    tmp: TStringList;
-begin
-  // read show placement
-  s := FConfigKey.ReadString(SKeyShowPlace);
-  Config.ShowPlacement := TShowPlacement(GetEnumValue(TypeInfo(TShowPlacement), s));
-  // read show placements' options
-  for place := Low(TShowPlacement) to High(TShowPlacement) do
-  begin
-    s := FConfigKey.ReadString(SKeyShowOptsPrefix + GetEnumName(TypeInfo(TShowPlacement), Integer(place)));
-    arr := Split(s, ';', False);
-    if Length(arr) < ShowPlacementOptionCount[place] then
-      SetLength(arr, ShowPlacementOptionCount[place]);
-    case place of
-      spToolbar:
-        begin
-          Config.ToolbarOptions.Toolbar := TIDEToolbar(StrToIntDef(arr[0], -1));
-          Config.ToolbarOptions.ButtonIdx := StrToIntDef(arr[1], -1);
-        end;
-      spMainMenu:
-        begin
-          Config.MainMenuOptions.InsertAfter := arr[0];
-        end;
-      spSubMenu:
-        begin
-          Config.SubMenuOptions.InsertInto := arr[0];
-          Config.SubMenuOptions.InsertAfter := arr[1];
-        end;
-    end;
-  end;
-  Config.CorrectValues;
-
-  // read favs list - values with names "Fav_##"
-  FFavList := TStringList.Create;
-  tmp := TStringList.Create;
-  FConfigKey.GetValueNames(tmp);
-  for i := 0 to tmp.Count - 1 do
-    if Pos(SKeyFavPrefix, tmp[i]) = 1 then
-      FFavList.Add(FConfigKey.ReadString(tmp[i]));
-  FreeAndNil(tmp);
-end;
-
-procedure TFavsWizard.SaveSettings;
-var tmp: TStringList;
-    i: Integer;
-    place: TShowPlacement;
-    s: string;
-begin
-  // write general options
-  FConfigKey.WriteString(SKeyShowPlace,
-                         GetEnumName(TypeInfo(TShowPlacement), Integer(Config.ShowPlacement)));
-
-  // write show placement options
-  for place := Low(TShowPlacement) to High(TShowPlacement) do
-  begin
-    case place of
-      spToolbar:
-        s := Join([IntToStr(Integer(Config.ToolbarOptions.Toolbar)),
-                   IntToStr(Config.ToolbarOptions.ButtonIdx)], ';', False);
-      spMainMenu:
-        s := Join([Config.MainMenuOptions.InsertAfter], ';', False);
-      spSubMenu:
-        s := Join([Config.SubMenuOptions.InsertInto,
-                   Config.SubMenuOptions.InsertAfter], ';', False);
-    end;
-    FConfigKey.WriteString(SKeyShowOptsPrefix + GetEnumName(TypeInfo(TShowPlacement), Integer(place)), s);
-  end;
-
-  // write fav list
-  if (FFavList <> nil) and (FFavList.Count > 0) then
-  begin
-    // remove old fav list - values with decimal number names
-    tmp := TStringList.Create;
-    FConfigKey.GetValueNames(tmp);
-    for i := 0 to tmp.Count - 1 do
-      if Pos(SKeyFavPrefix, tmp[i]) = 1 then
-        FConfigKey.DeleteValue(tmp[i]);
-    FreeAndNil(tmp);
-    // write new values
-    for i := 0 to FFavList.Count - 1 do
-      FConfigKey.WriteString( Format(SKeyFavPrefix + '%.2d', [i]), FFavList[i]);
-  end;
-end;
-
-procedure TFavsWizard.Cleanup;
-var act: TMainActions;
-begin
-Log('Cleanup');
-  SaveSettings;
-
-  // remove inserted controls
-  Remove;
-
-  // dispose all objects
-  INSrv.UnregisterToolbarNotifier(FNotifierIdx); // this will delete the object also
-  for act := Low(TMainActions) to High(TMainActions) do
-    FreeAndNil(FConstSubMenuItems[act]);
-  FreeAndNil(FFavList);
-  FreeAndNil(FConfigKey);
-  FreeAndNil(FPopupMenu);
-  FreeAndNil(FToolBtn);
-  FreeAndNil(FMenuItem);
-  inherited;
+  ReadSettings;
+  Fill;                          // insert our control into IDE
 end;
 
 function TFavsWizard.CheckReady: Boolean;
 begin
   MainMenu := INSrv.MainMenu;
   Result := (MainMenu <> nil); // get IDE menu - could be NULL if IDE hasn't been loaded yet
-end;
-
-procedure TFavsWizard.Startup;
-begin
-  ReadSettings;
-  Fill;                          // insert our control into IDE
 end;
 
 // *** methods ***
@@ -475,81 +476,83 @@ var mi, miParent: TMenuItem;
     ToolBtn: TToolButton;
 begin
   if FControlsInstalled then Exit; // Controls are installed currently
-log('fill start');
 
-  miParent := GetCurrMenu;
-  if miParent = nil then Exit;
+  try
+    miParent := GetCurrMenu;
+    if miParent = nil then Exit;
 
-  // add constant items
-  for mi in FConstSubMenuItems do
-    miParent.Add(mi);
-  // add favs list
-  FillFavItems(miParent);
+    // add constant items
+    for mi in FConstSubMenuItems do
+      miParent.Add(mi);
+    // add favs list
+    FillFavItems(miParent);
 
-  // insert the control to IDE
-  case Config.ShowPlacement of
-    spMainMenu:
-      begin
-        // check if the item exists already and remove it if yes
-        // this might happen accidently due to weird wizard load/unload cycle
-        mi := MainMenu.Items.Find(SMenuCaption);
-        if mi <> nil then
-          MainMenu.Items.Remove(mi);
-        mi := MainMenu.Items.Find(Config.MainMenuOptions.InsertAfter);
-        if mi = nil
-          then MainMenu.Items.Insert(MainMenu.Items.Count - 1, miParent)
-          else MainMenu.Items.Insert(MainMenu.Items.IndexOf(mi) + 1, miParent);
-      end;
-    spSubMenu:
-      begin
-        {}
-      end;
-    spToolbar:
-      begin
-        s := SToolbarNames[Config.ToolbarOptions.Toolbar];
-        Toolbar := INSrv.ToolBar[s];
-        // Whether the toolbar exist?
-        if Toolbar = nil then
-          // The wizard's personal toolbar - try to create
-          if Config.ToolbarOptions.Toolbar = tbPersonal then
-          begin
-            Toolbar := INSrv.NewToolbar(s, s);
-            if Toolbar = nil then
-              raise Exception.Create(SMsgErrToolbarCreate);
-            Toolbar.Visible := True;
-          end
-          // Standard toolbar - shit happened, raise error
-          else
-            raise Exception.Create(Format(SMsgErrToolbarNotFound, [s]));
-        // check if button exists and remove if yes
-        for ToolBtn in Toolbar do
-          if ToolBtn.Caption = SWizardID then
-            ToolBtn.Parent := nil;
-        // create toolbar button
-        if FToolBtn = nil then
+    // insert the control to IDE
+    case Config.ShowPlacement of
+      spMainMenu:
         begin
-          FToolBtn := TToolButton.Create(nil);
-          with FToolBtn do
-          begin
-            Style := tbsDropDown;
-            Caption := SWizardID; // for search only; shouldn't be shown
-            ShowHint := True;
-            Hint := SWizardName;
-            DropdownMenu := FPopupMenu;
-            ImageIndex := FIconIndexes[icoMain];
-          end;
+          // check if the item exists already and remove it if yes
+          // this might happen accidently due to weird wizard load/unload cycle
+          mi := MainMenu.Items.Find(SMenuCaption);
+          if mi <> nil then
+            MainMenu.Items.Remove(mi);
+          mi := MainMenu.Items.Find(Config.MainMenuOptions.InsertAfter);
+          if mi = nil
+            then MainMenu.Items.Insert(MainMenu.Items.Count - 1, miParent)
+            else MainMenu.Items.Insert(MainMenu.Items.IndexOf(mi) + 1, miParent);
         end;
-        InsertToolButton(Toolbar, Config.ToolbarOptions.ButtonIdx, FToolBtn);
-      end;
+      spSubMenu:
+        begin
+          {}
+        end;
+      spToolbar:
+        begin
+          s := SToolbarNames[Config.ToolbarOptions.Toolbar];
+          Toolbar := INSrv.ToolBar[s];
+          // Whether the toolbar exist?
+          if Toolbar = nil then
+            // The wizard's personal toolbar - try to create
+            if Config.ToolbarOptions.Toolbar = tbPersonal then
+            begin
+              Toolbar := INSrv.NewToolbar(s, s);
+              if Toolbar = nil then
+                raise Exception.Create(SMsgErrToolbarCreate);
+              Toolbar.Visible := True;
+            end
+            // Standard toolbar - shit happened, raise error
+            else
+              raise Exception.Create(Format(SMsgErrToolbarNotFound, [s]));
+          // check if button exists and remove if yes
+          for ToolBtn in Toolbar do
+            if ToolBtn.Caption = SWizardID then
+              ToolBtn.Parent := nil;
+          // create toolbar button
+          if FToolBtn = nil then
+          begin
+            FToolBtn := TToolButton.Create(nil);
+            with FToolBtn do
+            begin
+              Style := tbsDropDown;
+              Caption := SWizardID; // for search only; shouldn't be shown
+              ShowHint := True;
+              Hint := SWizardName;
+              DropdownMenu := FPopupMenu;
+              ImageIndex := FIconIndexes[icoMain];
+            end;
+          end;
+          InsertToolButton(Toolbar, Config.ToolbarOptions.ButtonIdx, FToolBtn);
+        end;
+    end;
+
+    // if personal toolbar appear empty, hide it (will be removed after IDE reload)
+    Toolbar := INSrv.ToolBar[SToolbarNames[tbPersonal]];
+    if (Toolbar <> nil) and (Toolbar.ButtonCount = 0) then
+      Toolbar.Visible := False;
+
+    FControlsInstalled := True;
+  except on E: Exception do
+    Log(E.Message);
   end;
-
-  // if personal toolbar appear empty, hide it (will be removed after IDE reload)
-  Toolbar := INSrv.ToolBar[SToolbarNames[tbPersonal]];
-  if (Toolbar <> nil) and (Toolbar.ButtonCount = 0) then
-    Toolbar.Visible := False;
-
-log('fill end');
-  FControlsInstalled := True;
 end;
 
 // clears show place (based on current Config.ShowPlacement value)
@@ -557,7 +560,6 @@ procedure TFavsWizard.Remove;
 var mi: TMenuItem;
 begin
   if not FControlsInstalled then Exit; // controls aren't installed currently
-log('remove');
 
   // remove constant items - just remove, not free!
   for mi in FConstSubMenuItems do
@@ -690,9 +692,19 @@ begin
   for mi in GetCurrMenu do
     if mi.Tag >= 0 then
       mi.Checked := (mi.Tag = CurPrIdx) or (mi.Tag = CurPrGrIdx);
-  // Set enabled state of "Add project/project group" item, if there's no project/group
+
+  // Change "Add project/project group" items' captions to include project/project group names
+  // Set enabled state of these items if there's no project/group opened
   FConstSubMenuItems[actAddProj].Enabled := (PrPath <> '');
+  FConstSubMenuItems[actAddProj].Caption :=
+    IfThen(PrPath <> '',
+           Format(SMenuAddProjectPatt, [ChangeFileExt(ExtractFileName(PrPath), '')]),
+           SMenuAddProjectEmpty);
   FConstSubMenuItems[actAddProjGroup].Enabled := (PrGrPath <> '');
+  FConstSubMenuItems[actAddProjGroup].Caption :=
+    IfThen(PrGrPath <> '',
+           Format(SMenuAddProjGroupPatt, [ChangeFileExt(ExtractFileName(PrGrPath), '')]),
+           SMenuAddProjGroupEmpty);
 end;
 
 {$ENDREGION}
