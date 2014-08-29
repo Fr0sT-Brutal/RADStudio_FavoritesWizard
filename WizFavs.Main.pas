@@ -127,14 +127,13 @@ const // not localizable
   SKeyShowOptsPrefix = 'ShowOpts_';
   SKeyShowPlace = 'ShowPlace';
   // IDE constants
-  SToolbarLabels: array[TIDEToolbar] of string =
-    ('Align', 'Browser', 'Custom', 'Debug', 'Desktop',
-     'HTMLDesign', 'HTMLFormat', 'HTMLTable', 'Personality',
-     'Position', 'Spacing', 'Standard', 'View', SToolbarName);
   SToolbarNames: array[TIDEToolbar] of string =
     (sAlignToolbar, sBrowserToolbar, sCustomToolBar, sDebugToolBar, sDesktopToolBar,
      sHTMLDesignToolbar, sHTMLFormatToolbar, sHTMLTableToolbar, sPersonalityToolBar,
      sPositionToolbar, sSpacingToolbar, sStandardToolBar, sViewToolBar, SFavsWizToolBar);
+var
+  // Displayable toolbar names, generated from SToolbarNames by removing 'Toolbar' part
+  SToolbarLabels: array[TIDEToolbar] of string;
 
 implementation
 
@@ -709,9 +708,14 @@ end;
 
 {$ENDREGION}
 
+var
+  tb: TIDEToolbar;
+
 initialization
   WizFavs.BaseWiz.SWizardName := SWizardName;
   WizFavs.BaseWiz.SWizardID := SWizardID;
   WizFavs.BaseWiz.CreateInstFunc := CreateInstFunc;
+  for tb := Low(TIDEToolbar) to High(TIDEToolbar) do
+    SToolbarLabels[tb] := ReplaceText(SToolbarNames[tb], 'Toolbar', '');
 
 end.
