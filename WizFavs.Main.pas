@@ -106,8 +106,10 @@ resourcestring
   SToolbarName = 'Favs wizard separate';
   SMenuAddProjectEmpty = 'No current project';
   SMenuAddProjectPatt = 'Add project %s';
+  SMenuAddProjectAlready = 'Project %s already added';
   SMenuAddProjGroupEmpty = 'No current project group';
   SMenuAddProjGroupPatt = 'Add project group %s';
+  SMenuAddProjGroupAlready = 'Project group %s already added';
   SMenuManageList = 'Manage Favorites list...';
   SMenuOptions = 'Options...';
   SMsgUnsupportedIDE = 'Necessary IDE service not found';
@@ -694,16 +696,21 @@ begin
 
   // Change "Add project/project group" items' captions to include project/project group names
   // Set enabled state of these items if there's no project/group opened
-  FConstSubMenuItems[actAddProj].Enabled := (PrPath <> '');
-  FConstSubMenuItems[actAddProj].Caption :=
-    IfThen(PrPath <> '',
-           Format(SMenuAddProjectPatt, [ChangeFileExt(ExtractFileName(PrPath), '')]),
-           SMenuAddProjectEmpty);
-  FConstSubMenuItems[actAddProjGroup].Enabled := (PrGrPath <> '');
-  FConstSubMenuItems[actAddProjGroup].Caption :=
-    IfThen(PrGrPath <> '',
-           Format(SMenuAddProjGroupPatt, [ChangeFileExt(ExtractFileName(PrGrPath), '')]),
-           SMenuAddProjGroupEmpty);
+  FConstSubMenuItems[actAddProj].Enabled := (PrPath <> '') and (CurPrIdx = -1);
+  if PrPath = '' then
+    FConstSubMenuItems[actAddProj].Caption := SMenuAddProjectEmpty
+  else if CurPrIdx <> -1 then
+    FConstSubMenuItems[actAddProj].Caption := Format(SMenuAddProjectAlready, [ChangeFileExt(ExtractFileName(PrPath), '')])
+  else
+    FConstSubMenuItems[actAddProj].Caption := Format(SMenuAddProjectPatt, [ChangeFileExt(ExtractFileName(PrPath), '')]);
+
+  FConstSubMenuItems[actAddProjGroup].Enabled := (PrGrPath <> '') and (CurPrGrIdx = -1);;
+  if PrGrPath = '' then
+    FConstSubMenuItems[actAddProjGroup].Caption := SMenuAddProjGroupEmpty
+  else if CurPrGrIdx <> -1 then
+    FConstSubMenuItems[actAddProjGroup].Caption := Format(SMenuAddProjGroupAlready, [ChangeFileExt(ExtractFileName(PrGrPath), '')])
+  else
+    FConstSubMenuItems[actAddProjGroup].Caption := Format(SMenuAddProjGroupPatt, [ChangeFileExt(ExtractFileName(PrGrPath), '')]);
 end;
 
 {$ENDREGION}
